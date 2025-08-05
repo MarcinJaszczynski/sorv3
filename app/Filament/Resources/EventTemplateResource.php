@@ -110,19 +110,6 @@ class EventTemplateResource extends Resource
                 ->label('Opis')
                 ->disableToolbarButtons(['codeBlock'])
                 ->columnSpanFull(),
-            Forms\Components\Select::make('currency_id')
-                ->label('Waluta')
-                ->options(fn() => \App\Models\Currency::pluck('name', 'id'))
-                ->required()
-                ->default(function () {
-                    return \App\Models\Currency::where('is_default', true)->first()?->id;
-                }),
-            Forms\Components\Select::make('start_place_id')
-                ->label('Domyślne miejsce startu')
-                ->options(fn() => \App\Models\Place::pluck('name', 'id'))
-                ->searchable()
-                ->nullable()
-                ->helperText('Domyślne miejsce startu dla tej imprezy'),
             Forms\Components\Section::make('SEO')
                 ->schema([
                     Forms\Components\TextInput::make('seo_title')
@@ -218,11 +205,6 @@ class EventTemplateResource extends Resource
                     })
                     ->placeholder('Brak dostępnych')
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('currency.name')
-                    ->label('Waluta')
-                    ->searchable()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('markup.name')
                     ->label('Narzut')
                     ->searchable()
@@ -245,9 +227,6 @@ class EventTemplateResource extends Resource
                     ->label('Tylko aktywne')
                     ->query(fn($query) => $query->where('is_active', true))
                     ->default(),
-                Tables\Filters\SelectFilter::make('currency')
-                    ->label('Waluta')
-                    ->options(fn() => \App\Models\Currency::pluck('name', 'id')),
                 Tables\Filters\TrashedFilter::make()
                     ->label('Kosz'),
             ])

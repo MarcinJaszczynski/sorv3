@@ -57,7 +57,11 @@ class EditEventTemplate extends EditRecord
             'hotelDays',
             'startingPlaceAvailabilities',
             'taxes',
-            'pricesPerPerson' // zamiast qtyVariants
+            'pricesPerPerson',
+            'transportTypes',
+            'eventTypes',
+            'eventPriceDescription',
+            'programPointChildren'
         ]);
         
         $clone = EventTemplate::create([
@@ -86,6 +90,17 @@ class EditEventTemplate extends EditRecord
         // Klonuj tagi
         $clone->tags()->sync($original->tags->pluck('id')->toArray());
         
+        // Klonuj typy transportu
+        $clone->transportTypes()->sync($original->transportTypes->pluck('id')->toArray());
+        
+        // Klonuj typy wydarzeń
+        $clone->eventTypes()->sync($original->eventTypes->pluck('id')->toArray());
+        
+        // Klonuj opis ceny wydarzenia (pivot)
+        if ($original->eventPriceDescription->isNotEmpty()) {
+            $clone->eventPriceDescription()->sync($original->eventPriceDescription->pluck('id')->toArray());
+        }
+        
         // Wyłącz foreign keys przed klonowaniem punktów programu
         DB::unprepared('PRAGMA foreign_keys = OFF');
         
@@ -105,10 +120,23 @@ class EditEventTemplate extends EditRecord
         // Ponownie włącz foreign keys
         DB::unprepared('PRAGMA foreign_keys = ON');
         
-        // Klonuj ceny za osobę (zamiast wariantów QTY)
-        // Najpierw usuń istniejące ceny, jeśli istnieją
-        $clone->pricesPerPerson()->delete();
+        // Klonuj warianty cenowe za osobę
+        foreach ($original->pricesPerPerson as $priceVariant) {
+            $clone->pricesPerPerson()->create([
+                'event_template_qty_id' => $priceVariant->event_template_qty_id,
+                'currency_id' => $priceVariant->currency_id,
+                'price_per_person' => $priceVariant->price_per_person,
+                'start_place_id' => $priceVariant->start_place_id,
+                'transport_cost' => $priceVariant->transport_cost,
+                'price_base' => $priceVariant->price_base,
+                'markup_amount' => $priceVariant->markup_amount,
+                'tax_amount' => $priceVariant->tax_amount,
+                'price_with_tax' => $priceVariant->price_with_tax,
+                'tax_breakdown' => $priceVariant->tax_breakdown,
+            ]);
+        }
         
+        // Klonuj ceny za osobę - po prostu kopiuj wszystkie wpisy ze zmienionym event_template_id
         foreach ($original->pricesPerPerson as $price) {
             $clone->pricesPerPerson()->create([
                 'event_template_qty_id' => $price->event_template_qty_id,
@@ -116,9 +144,7 @@ class EditEventTemplate extends EditRecord
                 'start_place_id' => $price->start_place_id,
                 'price_per_person' => $price->price_per_person,
             ]);
-        }
-        
-        // Klonuj ubezpieczenia dni
+        }        // Klonuj ubezpieczenia dni
         foreach ($original->dayInsurances as $dayInsurance) {
             $clone->dayInsurances()->create([
                 'day' => $dayInsurance->day,
@@ -200,6 +226,19 @@ class EditEventTemplate extends EditRecord
         
         // Klonuj podatki
         $clone->taxes()->sync($original->taxes->pluck('id')->toArray());
+        
+        // Klonuj dzieci punktów programu (programPointChildren)
+        foreach ($original->programPointChildren as $childRelation) {
+            $clone->programPointChildren()->attach($childRelation->id, [
+                'include_in_program' => $childRelation->pivot->include_in_program ?? true,
+                'include_in_calculation' => $childRelation->pivot->include_in_calculation ?? true,
+                'active' => $childRelation->pivot->active ?? true,
+                'show_title_style' => $childRelation->pivot->show_title_style ?? true,
+                'show_description' => $childRelation->pivot->show_description ?? true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
         
         // Dodaj powiadomienie o udanym klonowaniu
         \Filament\Notifications\Notification::make()
@@ -335,6 +374,10 @@ class EditEventTemplate extends EditRecord
 
     protected function afterSave(): void
     {
+        // Debug: Sprawdź co jest w $this->data
+        Log::info('EditEventTemplate afterSave - data:', $this->data);
+        Log::info('EditEventTemplate afterSave - event_price_description_id:', [$this->data['event_price_description_id'] ?? 'NOT SET']);
+        
         // Nie wykonuj dla nowo utworzonych rekordów podczas klonowania
         // oraz nie wykonuj jeśli to jest przekierowanie po klonowaniu
         if (!$this->record->wasRecentlyCreated && !request()->has('clone')) {
@@ -343,10 +386,15 @@ class EditEventTemplate extends EditRecord
 
         // Zapisz powiązanie z event_price_description do pivot
         $priceDescriptionId = $this->data['event_price_description_id'] ?? null;
+        Log::info('EditEventTemplate afterSave - priceDescriptionId value:', [$priceDescriptionId]);
+        
         if ($priceDescriptionId) {
-            $this->record->eventPriceDescriptions()->sync([$priceDescriptionId]);
+            Log::info('EditEventTemplate afterSave - syncing price description:', [$priceDescriptionId]);
+            $this->record->eventPriceDescription()->sync([$priceDescriptionId]);
+            Log::info('EditEventTemplate afterSave - sync completed');
         } else {
-            $this->record->eventPriceDescriptions()->sync([]);
+            Log::info('EditEventTemplate afterSave - clearing price descriptions');
+            $this->record->eventPriceDescription()->sync([]);
         }
 
         // Automatycznie przelicz ceny po zapisaniu
@@ -425,6 +473,16 @@ class EditEventTemplate extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $data = parent::mutateFormDataBeforeFill($data);
+        
+        // Załaduj obecną wartość event_price_description_id z relacji pivot
+        $eventPriceDescription = $this->record->eventPriceDescription()->first();
+        if ($eventPriceDescription) {
+            $data['event_price_description_id'] = $eventPriceDescription->id;
+            Log::info('EditEventTemplate mutateFormDataBeforeFill - loaded event_price_description_id:', [$eventPriceDescription->id]);
+        } else {
+            $data['event_price_description_id'] = null;
+            Log::info('EditEventTemplate mutateFormDataBeforeFill - no event_price_description found');
+        }
         
         // Po załadowaniu danych z bazy nie odświeżaj automatycznie
         // $this->dispatch('$refresh');

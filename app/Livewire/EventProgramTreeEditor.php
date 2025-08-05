@@ -29,7 +29,7 @@ class EventProgramTreeEditor extends Component
     {
         return [
             'modalData.program_point_id' => 'required|exists:event_template_program_points,id',
-            'modalData.day' => 'required|integer|min:1|max:' . $this->eventTemplate->duration_days,
+            'modalData.day' => 'required|integer|min:1|max:' . ($this->eventTemplate->duration_days + 1),
             'modalData.notes' => 'nullable|string',
             'modalData.include_in_program' => 'boolean',
             'modalData.include_in_calculation' => 'boolean',
@@ -43,7 +43,7 @@ class EventProgramTreeEditor extends Component
         'modalData.day.required' => 'Pole dzień jest wymagane.',
         'modalData.day.integer' => 'Dzień musi być liczbą.',
         'modalData.day.min' => 'Dzień nie może być mniejszy niż 1.',
-        'modalData.day.max' => 'Dzień nie może być większy niż liczba dni szablonu.',
+        'modalData.day.max' => 'Dzień nie może być większy niż liczba dni szablonu plus fakultatywne.',
     ];
 
     public function mount(EventTemplate $eventTemplate)
@@ -62,6 +62,8 @@ class EventProgramTreeEditor extends Component
 
         $grouped = $programPoints->groupBy('pivot.day');
         $days = [];
+        
+        // Dodaj dni standardowe
         for ($i = 1; $i <= $this->eventTemplate->duration_days; $i++) {
             $points = $grouped[$i] ?? collect();
             $days[] = [
@@ -117,6 +119,63 @@ class EventProgramTreeEditor extends Component
                 })->sortBy('order')->values()->toArray()
             ];
         }
+        
+        // Dodaj dzień fakultatywny (duration_days + 1)
+        $facultativeDay = $this->eventTemplate->duration_days + 1;
+        $facultativePoints = $grouped[$facultativeDay] ?? collect();
+        $days[] = [
+            'day' => $facultativeDay,
+            'points' => $facultativePoints->map(function ($point) {
+                $children = $point->children->map(function ($child) {
+                    $props = $this->getChildProperties($child->id);
+                    return [
+                        'id' => $child->id,
+                        'name' => $child->name,
+                        'description' => $child->description,
+                        'office_notes' => $child->office_notes,
+                        'duration_hours' => $child->duration_hours,
+                        'duration_minutes' => $child->duration_minutes,
+                        'featured_image' => $child->featured_image,
+                        'gallery_images' => $child->gallery_images,
+                        'unit_price' => $child->unit_price,
+                        'group_size' => $child->group_size,
+                        'currency' => $child->currency ? $child->currency->toArray() : null,
+                        'tags' => $child->tags ? $child->tags->toArray() : [],
+                        'include_in_program' => $props['include_in_program'],
+                        'include_in_calculation' => $props['include_in_calculation'],
+                        'active' => $props['active'],
+                        'show_title_style' => $props['show_title_style'] ?? true,
+                        'show_description' => $props['show_description'] ?? true,
+                    ];
+                })->toArray();
+                return [
+                    'pivot_id' => $point->pivot->id,
+                    'id' => $point->id,
+                    'name' => $point->name,
+                    'description' => $point->description,
+                    'office_notes' => $point->office_notes,
+                    'duration_hours' => $point->duration_hours,
+                    'duration_minutes' => $point->duration_minutes,
+                    'featured_image' => $point->featured_image,
+                    'gallery_images' => $point->gallery_images,
+                    'unit_price' => $point->unit_price,
+                    'group_size' => $point->group_size,
+                    'currency' => $point->currency ? $point->currency->toArray() : null,
+                    'tags' => $point->tags ? $point->tags->toArray() : [],
+                    'day' => $point->pivot->day,
+                    'order' => $point->pivot->order,
+                    'pivot_notes' => $point->pivot->notes,
+                    'program_point_id' => $point->id,
+                    'include_in_program' => $point->pivot->include_in_program,
+                    'include_in_calculation' => $point->pivot->include_in_calculation,
+                    'active' => $point->pivot->active,
+                    'show_title_style' => $point->pivot->show_title_style ?? true,
+                    'show_description' => $point->pivot->show_description ?? true,
+                    'children' => $children,
+                ];
+            })->sortBy('order')->values()->toArray()
+        ];
+        
         $this->programByDays = $days;
     }
 
@@ -154,7 +213,7 @@ class EventProgramTreeEditor extends Component
             'programByDays' => $this->programByDays,
             'eventTemplate' => $this->eventTemplate,
             'availableProgramPoints' => $availablePoints,
-            'duration_days' => $this->eventTemplate->duration_days,
+            'duration_days' => $this->eventTemplate->duration_days + 1, // +1 dla punktów fakultatywnych
         ]);
     }
 

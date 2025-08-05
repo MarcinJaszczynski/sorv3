@@ -59,7 +59,6 @@ class EventTemplate extends Model
             'event_price_description_id'
         );
     }
-    use HasFactory, SoftDeletes;
 
     /**
      * Pola masowo przypisywalne
@@ -85,6 +84,18 @@ class EventTemplate extends Model
         'end_place_id',
         'show_title_style',
         'show_description',
+        // Pola SEO
+        'seo_title',
+        'seo_description',
+        'seo_keywords',
+        'seo_canonical',
+        'seo_og_title',
+        'seo_og_description',
+        'seo_og_image',
+        'seo_twitter_title',
+        'seo_twitter_description',
+        'seo_twitter_image',
+        'seo_schema',
     ];
 
     /**

@@ -27,7 +27,13 @@
             @endphp
             <div class="bg-white shadow rounded-lg p-4 fi-section-content" data-day="{{ $dayNumber }}">
                 <div class="mb-3">
-                    <h3 class="text-lg font-semibold text-gray-700">Dzień {{ $dayNumber }}</h3>
+                    <h3 class="text-lg font-semibold text-gray-700">
+                        @if($dayNumber > $eventTemplate->duration_days)
+                            Fakultatywnie
+                        @else
+                            Dzień {{ $dayNumber }}
+                        @endif
+                    </h3>
                     <div class="flex flex-wrap gap-4 items-center mt-2">
                         @foreach(App\Models\Insurance::active()->get() as $insurance)
                             <label class="flex items-center gap-2">
@@ -287,7 +293,13 @@
             @for ($i = 1; $i <= $duration_days; $i++)
                 <div class="bg-white shadow rounded-lg p-4 fi-section-content" data-day="{{ $i }}">
                     <div class="mb-3">
-                        <h3 class="text-lg font-semibold text-gray-700">Dzień {{ $i }}</h3>
+                        <h3 class="text-lg font-semibold text-gray-700">
+                            @if($i > $eventTemplate->duration_days)
+                                Fakultatywnie
+                            @else
+                                Dzień {{ $i }}
+                            @endif
+                        </h3>
                     </div>
                     <ul class="program-day-list space-y-2 min-h-[100px] border border-dashed border-gray-300 p-2 rounded-md"
                         data-day-id="{{ $i }}">
