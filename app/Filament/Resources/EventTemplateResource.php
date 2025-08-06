@@ -126,6 +126,35 @@ class EventTemplateResource extends Resource
                         ->live()
                         ->default(fn($record) => $record?->gallery ?? []),
                 ]),
+
+            Forms\Components\Section::make('Opis i uwagi')
+                ->description('Dodatkowe informacje dla biura i uwagi do szablonu')
+                ->icon('heroicon-o-clipboard-document-list')
+                ->collapsible()
+                ->schema([
+                    Forms\Components\RichEditor::make('office_description')
+                        ->label('Opis dla biura')
+                        ->toolbarButtons(['bold', 'italic', 'bulletList', 'orderedList', 'link', 'undo', 'redo'])
+                        ->columnSpanFull(),
+                    Forms\Components\Textarea::make('notes')
+                        ->label('Uwagi')
+                        ->rows(3)
+                        ->columnSpanFull(),
+                ]),
+
+            Forms\Components\Section::make('Tagi i kategoryzacja')
+                ->description('Klasyfikacja i wyszukiwanie')
+                ->icon('heroicon-o-tag')
+                ->collapsible()
+                ->schema([
+                    Forms\Components\Select::make('tags')
+                        ->label('Tagi')
+                        ->multiple()
+                        ->relationship('tags', 'name')
+                        ->preload()
+                        ->searchable()
+                        ->columnSpanFull(),
+                ]),
             Forms\Components\CheckboxList::make('taxes')
                 ->label('Podatki')
                 ->helperText('Wybierz podatki, które mają być naliczane dla tej imprezy')
