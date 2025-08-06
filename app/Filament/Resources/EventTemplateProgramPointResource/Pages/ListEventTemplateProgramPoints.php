@@ -19,11 +19,6 @@ class ListEventTemplateProgramPoints extends ListRecords
                 ->icon('heroicon-o-plus')
                 ->url(static::getResource()::getUrl('create'))
                 ->color('primary'),
-            Action::make('tree_view')
-                ->label('Widok drzewa')
-                ->icon('heroicon-o-squares-2x2')
-                ->url(static::getResource()::getUrl('tree'))
-                ->color('info'),
         ];
     }
 
