@@ -67,12 +67,22 @@ trait CompressesImages
         
         // Obsługa tablicy plików (galeria)
         if (is_array($value)) {
-            $compressedFiles = [];
-            foreach ($value as $filePath) {
-                $compressedPath = $this->compressImageFile($record, $fieldName, $filePath);
-                $compressedFiles[] = $compressedPath ?: $filePath;
+            // Jeśli w tablicy są jakiekolwiek nie-stringi, nie nadpisuj pola (zostaw oryginał)
+            $allStrings = true;
+            foreach ($value as $file) {
+                if (!is_string($file)) {
+                    $allStrings = false;
+                    break;
+                }
             }
-            $record->update([$fieldName => $compressedFiles]);
+            if ($allStrings) {
+                $compressedFiles = [];
+                foreach ($value as $file) {
+                    $compressedPath = $this->compressImageFile($record, $fieldName, $file);
+                    $compressedFiles[] = $compressedPath ?: $file;
+                }
+                $record->update([$fieldName => $compressedFiles]);
+            }
         }
     }
     

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Filament\Resources\EventTemplateProgramPointResource\Widgets;
 
 use Filament\Widgets\Widget;

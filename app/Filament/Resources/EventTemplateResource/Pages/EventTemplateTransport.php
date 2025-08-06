@@ -33,10 +33,14 @@ class EventTemplateTransport extends Page implements HasForms
             'available' => $available,
         ]);
 
-        // Przelicz ponownie ceny po zmianie dostępności
+        // Przelicz ponownie ceny po zmianie dostępności używając nowego systemu
         try {
-            $calculator = new \App\Services\EventTemplatePriceCalculator();
-            $calculator->calculateAndSave($this->record);
+            // Użyj widget-a EventTemplatePriceTable do przeliczenia cen
+            $priceWidget = new \App\Filament\Resources\EventTemplateResource\Widgets\EventTemplatePriceTable();
+            $priceWidget->record = $this->record;
+            $priceWidget->startPlaceId = $startPlaceId;
+            $priceWidget->recalculatePrices();
+
             \Illuminate\Support\Facades\Log::info('Prices recalculated after availability change for event template: ' . $this->record->id);
 
             // Powiadomienie o przeliczeniu cen
@@ -154,45 +158,20 @@ class EventTemplateTransport extends Page implements HasForms
             $allPrices = \App\Models\EventTemplatePricePerPerson::with(['eventTemplateQty', 'currency'])
                 ->where('event_template_id', $this->record->id)
                 ->where('start_place_id', $place->id)
-                ->whereIn('currency_id', $polishCurrencyIds) // Wszystkie polskie waluty
+                ->whereIn('currency_id', $polishCurrencyIds)
                 ->orderBy('event_template_qty_id')
+                ->orderByDesc('id') // najnowszy rekord na górze
                 ->get();
 
-            // Debug: sprawdź co zostało pobrane
-            \Illuminate\Support\Facades\Log::info("Place {$place->name} (ID: {$place->id}) has " . $allPrices->count() . " price records");
-
-            // Grupuj po qty i sumuj ceny z różnych walut PLN
-            $groupedPrices = $allPrices->groupBy('event_template_qty_id');
-
-            $pricesData[$place->id] = $groupedPrices->map(function ($pricesForQty) use ($place) {
-                // Sumuj wszystkie ceny dla tej samej ilości uczestników (z różnych walut PLN)
-                $totalPriceBase = $pricesForQty->sum('price_base') ?: 0;
-                $totalMarkup = $pricesForQty->sum('markup_amount') ?: 0;
-                $totalTax = $pricesForQty->sum('tax_amount') ?: 0;
-                $totalPriceWithTax = $pricesForQty->sum('price_with_tax') ?: $pricesForQty->sum('price_per_person') ?: 0;
-                $totalTransportCost = $pricesForQty->sum('transport_cost') ?: 0;
-
-                // Weź qty z pierwszego rekordu
-                $firstPrice = $pricesForQty->first();
-                $qty = $firstPrice->eventTemplateQty->qty ?? 0;
-
-                $result = [
-                    'qty' => $qty,
-                    'price_per_person' => $totalPriceWithTax,
-                    'transport_cost' => $totalTransportCost,
-                    'price_base' => $totalPriceBase,
-                    'markup_amount' => $totalMarkup,
-                    'tax_amount' => $totalTax,
-                    'price_per_tax' => $totalTax, // Alias
+            // Grupuj po qty i wybierz tylko najnowszy rekord dla każdej ilości osób
+            $pricesData[$place->id] = $allPrices->groupBy('event_template_qty_id')->map(function ($pricesForQty) {
+                $latest = $pricesForQty->first();
+                return [
+                    'qty' => $latest->eventTemplateQty->qty ?? 0,
+                    'price_per_person' => $latest->price_per_person,
                 ];
-
-                // Debug: loguj zsumowany rekord ceny
-                \Illuminate\Support\Facades\Log::info("Summed price record for {$place->name}, qty {$qty}: " . json_encode($result));
-
-                return $result;
-            })->values()->toArray(); // values() żeby przeresetować klucze
+            })->values()->toArray();
         }
-
         return $pricesData;
     }
 
@@ -259,13 +238,9 @@ class EventTemplateTransport extends Page implements HasForms
         // Sprawdź czy są przeliczone ceny, jeśli nie - przelicz je
         $pricesCount = \App\Models\EventTemplatePricePerPerson::where('event_template_id', $this->record->id)->count();
         if ($pricesCount === 0) {
-            try {
-                $calculator = new \App\Services\EventTemplatePriceCalculator();
-                $calculator->calculateAndSave($this->record);
-                Log::info('Prices calculated for event template: ' . $this->record->id);
-            } catch (\Exception $e) {
-                Log::error('Failed to calculate prices for event template ' . $this->record->id . ': ' . $e->getMessage());
-            }
+            // USUNIĘTO: Automatyczne przeliczanie cen starym kalkulatorem
+            // Teraz ceny są przeliczane przez getDetailedCalculations() w widgetach
+            Log::info('No prices found for event template: ' . $this->record->id . ' - prices will be calculated on demand');
         }
 
         $this->form->fill([

@@ -107,7 +107,7 @@
                                     @if(!empty($point['gallery_images']) && is_array($point['gallery_images']))
                                         <div class="flex flex-wrap gap-1">
                                             @foreach(array_slice($point['gallery_images'], 0, 4) as $image)
-                                                @if(!str_contains($image, 'tmp'))
+                                                @if(is_string($image) && !str_contains($image, 'tmp'))
                                                     <img src="{{ Storage::url($image) }}" alt="Miniaturka galerii" class="h-8 w-8 object-cover rounded" onerror="this.style.display='none'">
                                                 @endif
                                             @endforeach

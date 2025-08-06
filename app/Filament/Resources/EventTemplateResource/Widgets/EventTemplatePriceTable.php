@@ -10,6 +10,13 @@ use Filament\Notifications\Notification;
 
 class EventTemplatePriceTable extends Widget
 {
+    /**
+     * Zaokrągla wartość w górę do najbliższych 5 zł
+     */
+    private function ceilTo5($value): float
+    {
+        return ceil($value / 5) * 5;
+    }
     protected static string $view = 'filament.resources.event-template-resource.widgets.event-template-price-table';
     public ?EventTemplate $record = null;
     public ?\App\Models\Place $startPlace = null;
@@ -207,14 +214,30 @@ class EventTemplatePriceTable extends Widget
         $calculations = [];
 
         $bus = $this->record->bus;
-        $transferKm = $this->record->transfer_km ?? 0;
         $programKm = $this->record->program_km ?? 0;
+        $startPlaceId = $this->startPlaceId;
+        $templateStartId = $this->record->start_place_id;
+        $templateEndId = $this->record->end_place_id;
 
-        // Użyj nowego obliczenia transportu jeśli dostępne
+        // Pobierz d1 i d2 z place_distances
+        $d1 = 0;
+        $d2 = 0;
+        if ($startPlaceId && $templateStartId) {
+            $d1 = \App\Models\PlaceDistance::where('from_place_id', $startPlaceId)
+                ->where('to_place_id', $templateStartId)
+                ->first()?->distance_km ?? 0;
+        }
+        if ($templateEndId && $startPlaceId) {
+            $d2 = \App\Models\PlaceDistance::where('from_place_id', $templateEndId)
+                ->where('to_place_id', $startPlaceId)
+                ->first()?->distance_km ?? 0;
+        }
+
+        $basicDistance = $d1 + $d2 + $programKm;
         if ($this->transportKm !== null) {
             $totalKm = $this->transportKm;
         } else {
-            $totalKm = 2 * $transferKm + $programKm;
+            $totalKm = 1.1 * $basicDistance + 50;
         }
 
         $duration = $this->record->duration_days ?? 1;
@@ -224,10 +247,11 @@ class EventTemplatePriceTable extends Widget
             $includedKm = $duration * $bus->package_km_per_day;
             $baseCost = $duration * $bus->package_price_per_day;
             $busCurrency = $bus->currency ?? 'PLN';
-            if ($totalKm - $includedKm <= 0) {
+            if ($totalKm <= $includedKm) {
                 $busTransportCost = $baseCost;
             } else {
-                $busTransportCost = $baseCost + (($totalKm - $includedKm) * $bus->extra_km_price);
+                $extraKm = $totalKm - $includedKm;
+                $busTransportCost = $baseCost + ($extraKm * $bus->extra_km_price);
             }
         }
 
@@ -589,8 +613,8 @@ class EventTemplatePriceTable extends Widget
             }
 
             $totalPLNBeforeMarkup = $this->calculateTotalInPLN($tempCalculation);
-            $duration = $this->record->duration_days ?? 1;
-            $markupCalculation = $this->calculateMarkup($totalPLNBeforeMarkup, $markup, $duration);
+            $markupAmount = $this->calculateMarkup($totalPLNBeforeMarkup);
+            $markupCalculation = ['amount' => $markupAmount];
 
             // Oblicz podatki
             $taxes = $this->record->taxes ?? collect();
@@ -617,6 +641,16 @@ class EventTemplatePriceTable extends Widget
             $calculations[$qty]['markup'] = $markupCalculation;
 
             // Dodaj podatki do obliczeń
+            // Dodaj informacje o narzucie
+            $markupPercent = $this->record->markup_percent ?? 20;
+            $calculations[$qty]['markup'] = [
+                'amount' => $markupCalculation['amount'],
+                'percent_applied' => $markupPercent,
+                'discount_applied' => false, // uproszczona wersja - bez skomplikowanej logiki rabatów
+                'discount_percent' => 0,
+                'min_daily_applied' => false
+            ];
+
             $calculations[$qty]['taxes'] = [
                 'total_amount' => $totalTaxAmount,
                 'breakdown' => $taxCalculations
@@ -649,27 +683,200 @@ class EventTemplatePriceTable extends Widget
         try {
             if (!$this->record) return;
 
-            $calculator = new EventTemplatePriceCalculator();
-            $calculator->calculateAndSave($this->record);
+            \Illuminate\Support\Facades\Log::info("Starting price recalculation for template {$this->record->id}");
 
-            // Refresh cached data
+            // KROK 1: Usuń duplikaty z bazy danych
+            $this->removeDuplicatePrices();
+
+            // KROK 2: Pobierz szczegółowe kalkulacje
+            $detailedCalculations = $this->getDetailedCalculations();
+            
+            if (empty($detailedCalculations)) {
+                Notification::make()
+                    ->title('Brak danych do kalkulacji')
+                    ->body('Nie można przeliczać cen - brak punktów programu lub konfiguracji.')
+                    ->warning()
+                    ->send();
+                return;
+            }
+
+            // KROK 3: Znajdź polską walutę
+            $plnCurrency = \App\Models\Currency::where('code', 'PLN')
+                ->orWhere('name', 'like', '%polski%złoty%')
+                ->first();
+                
+            if (!$plnCurrency) {
+                throw new \Exception('Nie znaleziono polskiej waluty (PLN) w systemie');
+            }
+
+            // KROK 4: Przelicz i zapisz ceny (modyfikuj istniejące lub utwórz nowe)
+            $updatedCount = 0;
+            $createdCount = 0;
+
+            foreach ($detailedCalculations as $qty => $currencyData) {
+                $plnData = $currencyData['PLN'] ?? null;
+                if (!$plnData) continue;
+
+                // Znajdź istniejący rekord lub utwórz nowy
+                $priceRecord = EventTemplatePricePerPerson::where([
+                    'event_template_id' => $this->record->id,
+                    'event_template_qty_id' => $this->getQtyId($qty),
+                    'currency_id' => $plnCurrency->id,
+                    'start_place_id' => $this->startPlaceId
+                ])->first();
+
+                $priceData = [
+                    'price_base' => $this->ceilTo5($plnData['total'] ?? 0),
+                    'markup_amount' => $this->ceilTo5($this->calculateMarkup($plnData['total'] ?? 0)),
+                    'tax_amount' => $this->ceilTo5($this->calculateTax($plnData['total'] ?? 0)),
+                    'price_with_tax' => $this->ceilTo5($this->calculatePriceWithTax($plnData['total'] ?? 0)),
+                    'price_per_person' => $this->ceilTo5($this->calculatePricePerPerson($plnData['total'] ?? 0, $qty)),
+                    'transport_cost' => $this->ceilTo5($this->calculateTransportCost($qty)),
+                    'tax_breakdown' => $this->prepareTaxBreakdown(),
+                    'updated_at' => now()
+                ];
+
+                if ($priceRecord) {
+                    // MODYFIKUJ istniejący rekord
+                    $priceRecord->update($priceData);
+                    $updatedCount++;
+                    \Illuminate\Support\Facades\Log::info("Updated price for qty {$qty}");
+                } else {
+                    // UTWÓRZ nowy rekord
+                    EventTemplatePricePerPerson::create(array_merge($priceData, [
+                        'event_template_id' => $this->record->id,
+                        'event_template_qty_id' => $this->getQtyId($qty),
+                        'currency_id' => $plnCurrency->id,
+                        'start_place_id' => $this->startPlaceId,
+                        'created_at' => now()
+                    ]));
+                    $createdCount++;
+                    \Illuminate\Support\Facades\Log::info("Created price for qty {$qty}");
+                }
+            }
+
+            // KROK 5: Refresh cached data
             unset($this->cachedPrices);
             unset($this->cachedCalculations);
-
-            // Refresh prices property
             $this->prices = $this->getPricesProperty();
 
             Notification::make()
                 ->title('Ceny zostały przeliczone!')
+                ->body("Zaktualizowano: {$updatedCount}, Utworzono: {$createdCount} rekordów cen")
                 ->success()
                 ->send();
+
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error recalculating prices: ' . $e->getMessage());
             Notification::make()
                 ->title('Błąd podczas przeliczania cen')
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
         }
+    }
+
+    /**
+     * Usuwa duplikaty cen z bazy danych - zachowuje tylko najnowsze rekordy (globalnie)
+     */
+    public static function removeDuplicatePrices(): void
+    {
+        \Illuminate\Support\Facades\Log::info("Removing duplicate prices globally");
+
+        // Znajdź duplikaty - rekordy z tą samą kombinacją kluczy (dla wszystkich szablonów)
+        $duplicateGroups = EventTemplatePricePerPerson::select('event_template_id', 'event_template_qty_id', 'currency_id', 'start_place_id')
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('event_template_id', 'event_template_qty_id', 'currency_id', 'start_place_id')
+            ->having('count', '>', 1)
+            ->get();
+
+        $removedCount = 0;
+        foreach ($duplicateGroups as $group) {
+            // Dla każdej grupy duplikatów, zachowaj tylko najnowszy rekord
+            $records = EventTemplatePricePerPerson::where([
+                'event_template_id' => $group->event_template_id,
+                'event_template_qty_id' => $group->event_template_qty_id,
+                'currency_id' => $group->currency_id,
+                'start_place_id' => $group->start_place_id
+            ])->orderBy('created_at', 'desc')->get();
+
+            // Usuń wszystkie oprócz pierwszego (najnowszego)
+            for ($i = 1; $i < $records->count(); $i++) {
+                $records[$i]->delete();
+                $removedCount++;
+            }
+        }
+
+        if ($removedCount > 0) {
+            \Illuminate\Support\Facades\Log::info("Removed {$removedCount} duplicate price records globally");
+        }
+    }
+
+    /**
+     * Pomocnicze metody do kalkulacji cen
+     */
+    private function getQtyId($qty): int
+    {
+        $qtyRecord = \App\Models\EventTemplateQty::where('qty', $qty)->first();
+        return $qtyRecord ? $qtyRecord->id : 0;
+    }
+
+    private function calculateMarkup($basePrice): float
+    {
+        $markupPercent = $this->record->markup_percent ?? 20; // domyślnie 20%
+        return $basePrice * ($markupPercent / 100);
+    }
+
+    private function calculateTax($basePrice): float
+    {
+        $taxPercent = 23; // VAT 23%
+        $markupAmount = $this->calculateMarkup($basePrice);
+        return ($basePrice + $markupAmount) * ($taxPercent / 100);
+    }
+
+    private function calculatePriceWithTax($basePrice): float
+    {
+        return $basePrice + $this->calculateMarkup($basePrice) + $this->calculateTax($basePrice);
+    }
+
+    private function calculatePricePerPerson($totalPrice, $qty): float
+    {
+        return $qty > 0 ? $totalPrice / $qty : 0;
+    }
+
+    private function calculateTransportCost($qty): float
+    {
+        // Algorytm: (dojazd + program + powrót) * 1.1 + 50 km, liczba autobusów, limity km, nadmiarowe km
+        $bus = $this->record->bus;
+        if (!$bus) return 0;
+        $duration = $this->record->duration_days ?? 1;
+        $qtyVariant = \App\Models\EventTemplateQty::where('qty', $qty)->first();
+        $totalPeople = $qty;
+        if ($qtyVariant) {
+            $totalPeople += ($qtyVariant->gratis ?? 0) + ($qtyVariant->staff ?? 0) + ($qtyVariant->driver ?? 0);
+        }
+        $busCapacity = $bus->capacity > 0 ? $bus->capacity : 50;
+        $busCount = (int) ceil($totalPeople / $busCapacity);
+        // Suma km: dojazd + program + powrót
+        $transferKm = $this->record->transfer_km ?? 0;
+        $programKm = $this->record->program_km ?? 0;
+        $totalKm = ($transferKm * 2) + $programKm;
+        $totalKm = $totalKm * 1.1 + 50;
+        $includedKm = $duration * $bus->package_km_per_day;
+        $baseCost = $duration * $bus->package_price_per_day;
+        if ($totalKm <= $includedKm) {
+            return $baseCost * $busCount;
+        } else {
+            $extraKm = $totalKm - $includedKm;
+            return ($baseCost + ($extraKm * $bus->extra_km_price)) * $busCount;
+        }
+    }
+
+    private function prepareTaxBreakdown(): array
+    {
+        return [
+            ['tax_name' => 'VAT 23%', 'tax_amount' => 23]
+        ];
     }
     public function calculatePointCost($qty, $groupSize, $unitPrice)
     {
@@ -713,56 +920,5 @@ class EventTemplatePriceTable extends Widget
             }
         }
         return $totalPLN;
-    }
-
-    /**
-     * Oblicza narzut dla danego wariantu qty
-     */
-    private function calculateMarkup($totalPLN, $markup, $duration = 1)
-    {
-        if (!$markup) {
-            return [
-                'amount' => 0,
-                'percent_applied' => 0,
-                'min_daily_applied' => false,
-                'discount_applied' => false,
-                'discount_percent' => 0
-            ];
-        }
-
-        // Sprawdź czy aktywna jest zniżka
-        $discountActive = false;
-        $discountPercent = 0;
-        $now = now();
-
-        if (
-            $markup->discount_start && $markup->discount_end &&
-            $now->between($markup->discount_start, $markup->discount_end)
-        ) {
-            $discountActive = true;
-            $discountPercent = $markup->discount_percent ?? 0;
-        }
-
-        // Oblicz narzut procentowy - od całkowitych kosztów
-        $percentToApply = $markup->percent;
-        if ($discountActive) {
-            $percentToApply = $markup->percent * (1 - $discountPercent / 100);
-        }
-
-        // Narzut = całkowity koszt * procent / 100
-        $markupFromPercent = $totalPLN * $percentToApply / 100;
-
-        // Sprawdź minimum dzienne
-        $minDaily = ($markup->min_daily_amount_pln ?? 0) * $duration;
-        $finalMarkup = max($markupFromPercent, $minDaily);
-
-        return [
-            'amount' => $finalMarkup,
-            'percent_applied' => $percentToApply,
-            'min_daily_applied' => $finalMarkup > $markupFromPercent,
-            'discount_applied' => $discountActive,
-            'discount_percent' => $discountPercent,
-            'min_daily_amount' => $minDaily
-        ];
     }
 }

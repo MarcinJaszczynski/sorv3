@@ -31,7 +31,69 @@ use App\Services\EventTemplatePriceCalculator;
  */
 class EventTemplateProgramPoint extends Model
 {
+    /**
+     * Mutator: zawsze zapisuje string lub null dla featured_image
+     */
+    public function setFeaturedImageAttribute($value)
+    {
+        \Log::debug('[setFeaturedImageAttribute] Wejście:', ['value' => $value, 'trace' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5)]);
+        if (is_array($value)) {
+            // Jeśli array, weź pierwszy element jeśli istnieje
+            $this->attributes['featured_image'] = isset($value[0]) && is_string($value[0]) ? $value[0] : null;
+        } elseif (is_string($value)) {
+            $this->attributes['featured_image'] = $value;
+        } else {
+            $this->attributes['featured_image'] = null;
+        }
+        \Log::debug('[setFeaturedImageAttribute] Zapisano:', ['featured_image' => $this->attributes['featured_image']]);
+    }
     use HasFactory;
+
+    /**
+     * Mutator: zawsze zapisuje poprawny JSON array stringów dla gallery_images
+     */
+    public function setGalleryImagesAttribute($value)
+    {
+        if (is_array($value)) {
+            // Filtruj tylko stringi i poprawne ścieżki
+            $value = array_filter($value, fn($v) => is_string($v) && preg_match('/\.(png|jpg|jpeg|webp|gif)$/i', $v));
+            $this->attributes['gallery_images'] = json_encode(array_values($value), JSON_UNESCAPED_SLASHES);
+        } elseif (is_string($value)) {
+            // Jeśli string, spróbuj zdekodować i zapisać jako array
+            $arr = json_decode($value, true);
+            if (is_array($arr)) {
+                $arr = array_filter($arr, fn($v) => is_string($v) && preg_match('/\.(png|jpg|jpeg|webp|gif)$/i', $v));
+                $this->attributes['gallery_images'] = json_encode(array_values($arr), JSON_UNESCAPED_SLASHES);
+            } else {
+                $this->attributes['gallery_images'] = json_encode([], JSON_UNESCAPED_SLASHES);
+            }
+        } else {
+            $this->attributes['gallery_images'] = json_encode([], JSON_UNESCAPED_SLASHES);
+        }
+    }
+    use HasFactory;
+
+    /**
+     * Mutator: zawsze zwraca tylko stringi (ścieżki plików) dla gallery_images
+     */
+    public function getGalleryImagesAttribute($value)
+    {
+        $array = is_array($value) ? $value : json_decode($value, true);
+        if (!is_array($array)) {
+            return [];
+        }
+        // Zwracaj tylko stringi (ścieżki plików)
+        return array_values(array_filter($array, fn($item) => is_string($item)));
+    }
+
+    /**
+     * Mutator: zawsze zwraca string lub null dla featured_image
+     */
+    public function getFeaturedImageAttribute($value)
+    {
+        \Log::debug('[getFeaturedImageAttribute] Odczyt:', ['value' => $value]);
+        return is_string($value) ? $value : null;
+    }
 
     /**
      * Pola masowo przypisywalne

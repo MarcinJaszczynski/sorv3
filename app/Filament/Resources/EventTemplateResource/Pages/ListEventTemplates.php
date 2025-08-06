@@ -11,7 +11,7 @@ use Filament\Tables\Actions\Action as TableAction;
 class ListEventTemplates extends ListRecords
 {
     protected static string $resource = EventTemplateResource::class;
-    
+
     protected static string $defaultPaginationPageOption = '25';
 
     protected function getHeaderActions(): array
@@ -41,7 +41,7 @@ class ListEventTemplates extends ListRecords
     {
         return [
             TableAction::make('edit')
-                ->url(fn ($record) => static::getResource()::getUrl('edit', ['record' => $record->id])),
+                ->url(fn($record) => static::getResource()::getUrl('edit', ['record' => $record->id])),
             TableAction::make('delete'),
             TableAction::make('clone')
                 ->label('Klonuj')
@@ -49,15 +49,15 @@ class ListEventTemplates extends ListRecords
                 ->action(function ($record) {
                     // Załaduj wszystkie relacje
                     $record->load([
-                        'tags', 
-                        'programPoints', 
-                        'dayInsurances.insurance', 
+                        'tags',
+                        'programPoints',
+                        'dayInsurances.insurance',
                         'hotelDays',
                         'startingPlaceAvailabilities',
                         'taxes',
                         'pricesPerPerson' // zamiast qtyVariants
                     ]);
-                    
+
                     $clone = EventTemplate::create([
                         'name' => $record->name . ' (copy)',
                         'subtitle' => $record->subtitle,
@@ -80,10 +80,10 @@ class ListEventTemplates extends ListRecords
                         'seo_description' => $record->seo_description,
                         'seo_keywords' => $record->seo_keywords,
                     ]);
-                    
+
                     // Klonuj tagi
                     $clone->tags()->sync($record->tags->pluck('id')->toArray());
-                    
+
                     // Klonuj punkty programu (pivot)
                     foreach ($record->programPoints as $point) {
                         $clone->programPoints()->attach($point->id, [
@@ -95,11 +95,11 @@ class ListEventTemplates extends ListRecords
                             'active' => $point->pivot->active,
                         ]);
                     }
-                    
+
                     // Klonuj ceny za osobę (zamiast wariantów QTY)
                     // Najpierw usuń istniejące ceny, jeśli istnieją
                     $clone->pricesPerPerson()->delete();
-                    
+
                     foreach ($record->pricesPerPerson as $price) {
                         $clone->pricesPerPerson()->create([
                             'event_template_qty_id' => $price->event_template_qty_id,
@@ -108,7 +108,7 @@ class ListEventTemplates extends ListRecords
                             'price_per_person' => $price->price_per_person,
                         ]);
                     }
-                    
+
                     // Klonuj ubezpieczenia dni
                     foreach ($record->dayInsurances as $dayInsurance) {
                         $clone->dayInsurances()->create([
@@ -116,7 +116,7 @@ class ListEventTemplates extends ListRecords
                             'insurance_id' => $dayInsurance->insurance_id,
                         ]);
                     }
-                    
+
                     // Klonuj dni hotelowe - jeśli nie ma w bazie, generuj na podstawie duration_days
                     if ($record->hotelDays->count() > 0) {
                         // Kopiuj z bazy
@@ -142,7 +142,7 @@ class ListEventTemplates extends ListRecords
                             ]);
                         }
                     }
-                    
+
                     // Klonuj dostępność miejsc startowych
                     foreach ($record->startingPlaceAvailabilities as $availability) {
                         $clone->startingPlaceAvailabilities()->create([
@@ -152,16 +152,16 @@ class ListEventTemplates extends ListRecords
                             'note' => $availability->note,
                         ]);
                     }
-                    
+
                     // Klonuj podatki
                     $clone->taxes()->sync($record->taxes->pluck('id')->toArray());
-                    
+
                     // Dodaj powiadomienie o udanym klonowaniu
                     \Filament\Notifications\Notification::make()
                         ->title('Szablon został pomyślnie sklonowany!')
                         ->success()
                         ->send();
-                        
+
                     // Przekieruj do edycji nowego klona
                     return redirect(static::getResource()::getUrl('edit', ['record' => $clone->id]));
                 }),

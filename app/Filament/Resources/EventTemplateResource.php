@@ -124,31 +124,6 @@ class EventTemplateResource extends Resource
                     Forms\Components\TextInput::make('seo_keywords')
                         ->label('Słowa kluczowe')
                         ->helperText('Oddziel przecinkami'),
-                    Forms\Components\TextInput::make('seo_canonical')
-                        ->label('Canonical URL')
-                        ->helperText('Adres kanoniczny (jeśli dotyczy)'),
-                    Forms\Components\TextInput::make('seo_og_title')
-                        ->label('OpenGraph Title')
-                        ->maxLength(70),
-                    Forms\Components\Textarea::make('seo_og_description')
-                        ->label('OpenGraph Description')
-                        ->maxLength(350)
-                        ->rows(2),
-                    Forms\Components\TextInput::make('seo_og_image')
-                        ->label('OpenGraph Image URL'),
-                    Forms\Components\TextInput::make('seo_twitter_title')
-                        ->label('Twitter Title')
-                        ->maxLength(70),
-                    Forms\Components\Textarea::make('seo_twitter_description')
-                        ->label('Twitter Description')
-                        ->maxLength(350)
-                        ->rows(2),
-                    Forms\Components\TextInput::make('seo_twitter_image')
-                        ->label('Twitter Image URL'),
-                    Forms\Components\Textarea::make('seo_schema')
-                        ->label('Schema.org (JSON-LD)')
-                        ->rows(3)
-                        ->helperText('Wklej kod JSON-LD dla zaawansowanego SEO (opcjonalnie)'),
                 ]),
         ]);
     }

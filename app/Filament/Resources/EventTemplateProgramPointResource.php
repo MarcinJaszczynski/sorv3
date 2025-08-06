@@ -36,43 +36,6 @@ class EventTemplateProgramPointResource extends Resource
     {
         return $form
             ->schema([
-                // Sekcja zdjęć NA GÓRZE
-                Forms\Components\Section::make('Zdjęcia i galeria')
-                    ->description('Materiały wizualne punktu programu')
-                    ->icon('heroicon-o-photo')
-                    ->collapsible()
-                    ->schema([
-                        Forms\Components\FileUpload::make('featured_image')
-                            ->label('Zdjęcie wyróżniające')
-                            ->image()
-                            ->disk('public')
-                            ->directory('program-points')
-                            ->visibility('public')
-                            ->maxSize(5120)
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
-                            ->preserveFilenames()
-                            ->nullable()
-                            ->default(fn($record) => is_string($record?->featured_image) ? $record->featured_image : null),
-
-                        Forms\Components\FileUpload::make('gallery_images')
-                            ->label('Zdjęcia do galerii')
-                            ->hint('Możesz dodać do 10 zdjęć uzupełniających. Ułatwiają prezentację punktu programu.')
-                            ->image()
-                            ->multiple()
-                            ->disk('public')
-                            ->directory('program-points/gallery')
-                            ->visibility('public')
-                            ->downloadable()
-                            ->previewable()
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
-                            ->maxSize(5120)
-                            ->reorderable()
-                            ->maxFiles(10)
-                            ->imageEditor()
-                            ->imageEditorAspectRatios(['16:9','4:3','1:1'])
-                            ->panelLayout('grid')
-                            ->uploadingMessage('Przesyłanie zdjęć...'),
-                    ]),
 
                 // Sekcja podstawowych informacji
                 Forms\Components\Section::make('Podstawowe informacje')

@@ -17,10 +17,12 @@ use Illuminate\Support\Facades\DB;
 class EditEventTemplate extends EditRecord
 {
     use CompressesImages;
-    
+
     protected static string $resource = EventTemplateResource::class;
 
     public array $hotel_days = [];
+
+    protected static string $view = 'filament.resources.event-template-resource.pages.edit-event-template';
 
     protected function getHeaderActions(): array
     {
@@ -31,16 +33,16 @@ class EditEventTemplate extends EditRecord
             Actions\Action::make('clone')
                 ->label('Klonuj')
                 ->icon('heroicon-o-document-duplicate')
-                ->action(fn () => $this->cloneEventTemplate()),
+                ->action(fn() => $this->cloneEventTemplate()),
             Actions\Action::make('edit-program')
                 ->label('Edytuj program')
                 ->icon('heroicon-o-bars-3')
-                ->url(fn () => static::getResource()::getUrl('edit-program', ['record' => $this->record->id]))
+                ->url(fn() => static::getResource()::getUrl('edit-program', ['record' => $this->record->id]))
                 ->color('primary'),
             Actions\Action::make('transport')
                 ->label('Transport i kalkulacja')
                 ->icon('heroicon-o-truck')
-                ->url(fn () => static::getResource()::getUrl('transport', ['record' => $this->record->id]))
+                ->url(fn() => static::getResource()::getUrl('transport', ['record' => $this->record->id]))
                 ->color('warning'),
         ];
     }
@@ -48,22 +50,23 @@ class EditEventTemplate extends EditRecord
     protected function cloneEventTemplate()
     {
         $original = $this->record;
-        
+
         // Załaduj wszystkie relacje
         $original->load([
-            'tags', 
-            'programPoints', 
-            'dayInsurances.insurance', 
+            'tags',
+            'programPoints',
+            'dayInsurances.insurance',
             'hotelDays',
             'startingPlaceAvailabilities',
             'taxes',
             'pricesPerPerson',
+            'qtyVariants',
             'transportTypes',
             'eventTypes',
             'eventPriceDescription',
             'programPointChildren'
         ]);
-        
+
         $clone = EventTemplate::create([
             'name' => $original->name . ' (Kopia)',
             'subtitle' => $original->subtitle,
@@ -86,57 +89,54 @@ class EditEventTemplate extends EditRecord
             'seo_description' => $original->seo_description,
             'seo_keywords' => $original->seo_keywords,
         ]);
-        
+
         // Klonuj tagi
         $clone->tags()->sync($original->tags->pluck('id')->toArray());
-        
+
         // Klonuj typy transportu
         $clone->transportTypes()->sync($original->transportTypes->pluck('id')->toArray());
-        
+
         // Klonuj typy wydarzeń
         $clone->eventTypes()->sync($original->eventTypes->pluck('id')->toArray());
-        
+
         // Klonuj opis ceny wydarzenia (pivot)
         if ($original->eventPriceDescription->isNotEmpty()) {
             $clone->eventPriceDescription()->sync($original->eventPriceDescription->pluck('id')->toArray());
         }
-        
+
         // Wyłącz foreign keys przed klonowaniem punktów programu
         DB::unprepared('PRAGMA foreign_keys = OFF');
-        
+
         // Klonuj punkty programu (pivot) - używając bezpośredniego SQL
         foreach ($original->programPoints as $point) {
             DB::unprepared("INSERT INTO event_template_event_template_program_point 
                           (event_template_id, event_template_program_point_id, day, `order`, notes, include_in_program, include_in_calculation, active, created_at, updated_at) 
                           VALUES 
-                          ({$clone->id}, {$point->id}, {$point->pivot->day}, {$point->pivot->order}, " . 
-                          (is_null($point->pivot->notes) ? 'NULL' : "'" . addslashes($point->pivot->notes) . "'") . ", " .
-                          ($point->pivot->include_in_program ? 1 : 0) . ", " .
-                          ($point->pivot->include_in_calculation ? 1 : 0) . ", " .
-                          ($point->pivot->active ? 1 : 0) . ", " .
-                          "'" . now() . "', '" . now() . "')");
+                          ({$clone->id}, {$point->id}, {$point->pivot->day}, {$point->pivot->order}, " .
+                (is_null($point->pivot->notes) ? 'NULL' : "'" . addslashes($point->pivot->notes) . "'") . ", " .
+                ($point->pivot->include_in_program ? 1 : 0) . ", " .
+                ($point->pivot->include_in_calculation ? 1 : 0) . ", " .
+                ($point->pivot->active ? 1 : 0) . ", " .
+                "'" . now() . "', '" . now() . "')");
         }
-        
+
         // Ponownie włącz foreign keys
         DB::unprepared('PRAGMA foreign_keys = ON');
-        
-        // Klonuj warianty cenowe za osobę
-        foreach ($original->pricesPerPerson as $priceVariant) {
-            $clone->pricesPerPerson()->create([
-                'event_template_qty_id' => $priceVariant->event_template_qty_id,
-                'currency_id' => $priceVariant->currency_id,
-                'price_per_person' => $priceVariant->price_per_person,
-                'start_place_id' => $priceVariant->start_place_id,
-                'transport_cost' => $priceVariant->transport_cost,
-                'price_base' => $priceVariant->price_base,
-                'markup_amount' => $priceVariant->markup_amount,
-                'tax_amount' => $priceVariant->tax_amount,
-                'price_with_tax' => $priceVariant->price_with_tax,
-                'tax_breakdown' => $priceVariant->tax_breakdown,
+
+        // Klonuj warianty QTY
+        foreach ($original->qtyVariants as $qtyVariant) {
+            $clone->qtyVariants()->create([
+                'qty' => $qtyVariant->qty,
+                'gratis' => $qtyVariant->gratis,
+                'staff' => $qtyVariant->staff,
+                'driver' => $qtyVariant->driver,
             ]);
         }
-        
-        // Klonuj ceny za osobę - po prostu kopiuj wszystkie wpisy ze zmienionym event_template_id
+
+        // Klonuj ceny za osobę
+        // Najpierw usuń istniejące ceny, jeśli istnieją
+        $clone->pricesPerPerson()->delete();
+
         foreach ($original->pricesPerPerson as $price) {
             $clone->pricesPerPerson()->create([
                 'event_template_qty_id' => $price->event_template_qty_id,
@@ -144,18 +144,20 @@ class EditEventTemplate extends EditRecord
                 'start_place_id' => $price->start_place_id,
                 'price_per_person' => $price->price_per_person,
             ]);
-        }        // Klonuj ubezpieczenia dni
+        }
+
+        // Klonuj ubezpieczenia dni
         foreach ($original->dayInsurances as $dayInsurance) {
             $clone->dayInsurances()->create([
                 'day' => $dayInsurance->day,
                 'insurance_id' => $dayInsurance->insurance_id,
             ]);
         }
-        
+
         // Klonuj dni hotelowe - kopiuj strukturę pokojów z aktualnego stanu lub z bazy
         $nights = max(0, $clone->duration_days - 1);
         Log::info("Cloning hotel days: generating {$nights} nights for {$clone->duration_days} day trip");
-        
+
         // Najpierw spróbuj użyć aktualnych danych z komponentu
         if (!empty($this->hotel_days)) {
             Log::info("Using hotel days from component state");
@@ -171,7 +173,7 @@ class EditEventTemplate extends EditRecord
                     Log::info("Copied hotel day {$hotelDay['day']} from component");
                 }
             }
-            
+
             // Jeśli brakuje dni, uzupełnij pustymi
             if (count($this->hotel_days) < $nights) {
                 for ($i = count($this->hotel_days) + 1; $i <= $nights; $i++) {
@@ -189,7 +191,7 @@ class EditEventTemplate extends EditRecord
             // Jeśli nie ma danych w komponencie, spróbuj z bazy
             Log::info("Using hotel days from database");
             $originalHotelDays = $original->hotelDays()->orderBy('day')->get()->keyBy('day');
-            
+
             for ($i = 1; $i <= $nights; $i++) {
                 if ($originalHotelDays->has($i)) {
                     $originalDay = $originalHotelDays[$i];
@@ -213,7 +215,7 @@ class EditEventTemplate extends EditRecord
                 }
             }
         }
-        
+
         // Klonuj dostępność miejsc startowych
         foreach ($original->startingPlaceAvailabilities as $availability) {
             $clone->startingPlaceAvailabilities()->create([
@@ -223,10 +225,10 @@ class EditEventTemplate extends EditRecord
                 'note' => $availability->note,
             ]);
         }
-        
+
         // Klonuj podatki
         $clone->taxes()->sync($original->taxes->pluck('id')->toArray());
-        
+
         // Klonuj dzieci punktów programu (programPointChildren)
         foreach ($original->programPointChildren as $childRelation) {
             $clone->programPointChildren()->attach($childRelation->id, [
@@ -239,13 +241,13 @@ class EditEventTemplate extends EditRecord
                 'updated_at' => now(),
             ]);
         }
-        
+
         // Dodaj powiadomienie o udanym klonowaniu
         \Filament\Notifications\Notification::make()
             ->title('Szablon został pomyślnie sklonowany!')
             ->success()
             ->send();
-            
+
         // Przekieruj do edycji nowego klona
         return redirect(static::getResource()::getUrl('edit', ['record' => $clone->id]));
     }
@@ -253,9 +255,9 @@ class EditEventTemplate extends EditRecord
     public function mount($record): void
     {
         parent::mount($record);
-        
+
         Log::info("Mount called for record {$this->record->id}, hotelDays count: " . $this->record->hotelDays->count());
-        
+
         // Najpierw spróbuj załadować z bazy
         if ($this->record->hotelDays->count() > 0) {
             Log::info("Loading hotel days from database for record {$this->record->id}");
@@ -265,7 +267,7 @@ class EditEventTemplate extends EditRecord
             Log::info("Generating hotel days from duration_days for record {$this->record->id}");
             $this->refreshHotelDays();
         }
-        
+
         Log::info("Mount finished, hotel_days count: " . count($this->hotel_days));
     }
 
@@ -275,7 +277,7 @@ class EditEventTemplate extends EditRecord
         $this->hotel_days = $this->record->hotelDays()
             ->orderBy('day')
             ->get()
-            ->map(function($day) {
+            ->map(function ($day) {
                 return [
                     'day' => $day->day,
                     'hotel_room_ids_qty' => $day->hotel_room_ids_qty ?? [],
@@ -311,7 +313,7 @@ class EditEventTemplate extends EditRecord
             return;
         }
         foreach (['qty', 'gratis', 'staff', 'driver'] as $role) {
-            $this->hotel_days[$dayIndex + 1]["hotel_room_ids_{$role}"] = 
+            $this->hotel_days[$dayIndex + 1]["hotel_room_ids_{$role}"] =
                 $this->hotel_days[$dayIndex]["hotel_room_ids_{$role}"] ?? [];
         }
     }
@@ -321,10 +323,10 @@ class EditEventTemplate extends EditRecord
         if (!isset($this->hotel_days[$dayIndex]["hotel_room_ids_{$role}"])) {
             return;
         }
-        
+
         $rooms = $this->hotel_days[$dayIndex]["hotel_room_ids_{$role}"];
         $key = array_search($roomId, $rooms);
-        
+
         if ($key !== false) {
             unset($rooms[$key]);
             $this->hotel_days[$dayIndex]["hotel_room_ids_{$role}"] = array_values($rooms);
@@ -355,7 +357,7 @@ class EditEventTemplate extends EditRecord
             ]);
         } catch (\Exception $e) {
             $this->dispatch('notify', [
-                'type' => 'error', 
+                'type' => 'error',
                 'message' => 'Błąd podczas zapisywania: ' . $e->getMessage()
             ]);
         }
@@ -377,7 +379,7 @@ class EditEventTemplate extends EditRecord
         // Debug: Sprawdź co jest w $this->data
         Log::info('EditEventTemplate afterSave - data:', $this->data);
         Log::info('EditEventTemplate afterSave - event_price_description_id:', [$this->data['event_price_description_id'] ?? 'NOT SET']);
-        
+
         // Nie wykonuj dla nowo utworzonych rekordów podczas klonowania
         // oraz nie wykonuj jeśli to jest przekierowanie po klonowaniu
         if (!$this->record->wasRecentlyCreated && !request()->has('clone')) {
@@ -387,7 +389,7 @@ class EditEventTemplate extends EditRecord
         // Zapisz powiązanie z event_price_description do pivot
         $priceDescriptionId = $this->data['event_price_description_id'] ?? null;
         Log::info('EditEventTemplate afterSave - priceDescriptionId value:', [$priceDescriptionId]);
-        
+
         if ($priceDescriptionId) {
             Log::info('EditEventTemplate afterSave - syncing price description:', [$priceDescriptionId]);
             $this->record->eventPriceDescription()->sync([$priceDescriptionId]);
@@ -419,20 +421,20 @@ class EditEventTemplate extends EditRecord
     {
         try {
             Log::info("Saving hotel days to database", $this->hotel_days);
-            
+
             // Optymalizowane zapisywanie - aktualizuj tylko zmienione
             $existingDays = $this->record->hotelDays()->get()->keyBy('day');
-            
+
             foreach ($this->hotel_days as $dayData) {
                 $day = $dayData['day'];
-                
+
                 $data = [
                     'hotel_room_ids_qty' => $dayData['hotel_room_ids_qty'] ?? [],
                     'hotel_room_ids_gratis' => $dayData['hotel_room_ids_gratis'] ?? [],
                     'hotel_room_ids_staff' => $dayData['hotel_room_ids_staff'] ?? [],
                     'hotel_room_ids_driver' => $dayData['hotel_room_ids_driver'] ?? [],
                 ];
-                
+
                 if ($existingDays->has($day)) {
                     // Aktualizuj istniejący
                     $existingDays[$day]->update($data);
@@ -443,17 +445,16 @@ class EditEventTemplate extends EditRecord
                     Log::info("Created day {$day}");
                 }
             }
-            
+
             // Usuń dni, które już nie istnieją w $this->hotel_days
             $currentDays = collect($this->hotel_days)->pluck('day');
             $toDelete = $existingDays->whereNotIn('day', $currentDays);
-            $toDelete->each(function($day) {
+            $toDelete->each(function ($day) {
                 Log::info("Deleting day {$day->day}");
                 $day->delete();
             });
-            
+
             Log::info('Hotel days saved successfully');
-            
         } catch (\Exception $e) {
             Log::error('Error saving hotel days: ' . $e->getMessage());
             throw $e;
@@ -473,7 +474,7 @@ class EditEventTemplate extends EditRecord
     protected function mutateFormDataBeforeFill(array $data): array
     {
         $data = parent::mutateFormDataBeforeFill($data);
-        
+
         // Załaduj obecną wartość event_price_description_id z relacji pivot
         $eventPriceDescription = $this->record->eventPriceDescription()->first();
         if ($eventPriceDescription) {
@@ -483,7 +484,7 @@ class EditEventTemplate extends EditRecord
             $data['event_price_description_id'] = null;
             Log::info('EditEventTemplate mutateFormDataBeforeFill - no event_price_description found');
         }
-        
+
         // Po załadowaniu danych z bazy nie odświeżaj automatycznie
         // $this->dispatch('$refresh');
         return $data;
@@ -517,7 +518,7 @@ class EditEventTemplate extends EditRecord
                 ];
             }
         }
-        
+
         Log::info("RefreshHotelDays result: " . count($this->hotel_days) . " nights");
     }
 }
