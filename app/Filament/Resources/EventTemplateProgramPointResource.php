@@ -25,9 +25,10 @@ class EventTemplateProgramPointResource extends Resource
     protected static ?string $model = EventTemplateProgramPoint::class;
 
     // Ikona i etykiety nawigacji w panelu
-    protected static ?string $navigationGroup = 'Szablony imprez';
+    protected static ?string $navigationGroup = 'Szablony';
     protected static ?string $navigationIcon = 'heroicon-o-map-pin';
-    protected static ?string $navigationLabel = 'Punkty Programu';
+    protected static ?string $navigationLabel = 'Punkty programu';
+    protected static ?int $navigationSort = 20;
 
     /**
      * Definicja formularza do edycji/dodawania punktu programu

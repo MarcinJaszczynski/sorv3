@@ -25,9 +25,32 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property \Illuminate\Support\Carbon $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
  */
+
+
 class EventTemplate extends Model
 {
     use HasFactory, SoftDeletes;
+
+
+    /**
+     * Mutator: zawsze zapisuj featured_image jako string (pierwszy element tablicy lub null)
+     */
+    public function setFeaturedImageAttribute($value)
+    {
+        if (is_array($value)) {
+            $this->attributes['featured_image'] = $value[0] ?? null;
+        } else {
+            $this->attributes['featured_image'] = $value;
+        }
+    }
+
+    /**
+     * Relacja wiele-do-wielu z tagami
+     */
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'event_template_tag');
+    }
 
     public function transportTypes()
     {
@@ -84,7 +107,23 @@ class EventTemplate extends Model
         'end_place_id',
         'show_title_style',
         'show_description',
-        // Pola SEO
+        'name',
+        'subtitle',
+        'slug',
+        'duration_days',
+        'is_active',
+        'featured_image',
+        'event_description',
+        'gallery',
+        'office_description',
+        'notes',
+        'transfer_km',
+        'program_km',
+        'bus_id',
+        'markup_id',
+        'start_place_id',
+        'end_place_id',
+        'transport_notes',
         'seo_title',
         'seo_description',
         'seo_keywords',
@@ -92,30 +131,10 @@ class EventTemplate extends Model
         'seo_og_title',
         'seo_og_description',
         'seo_og_image',
-        'seo_twitter_title',
-        'seo_twitter_description',
-        'seo_twitter_image',
-        'seo_schema',
+        // usunięte: 'seo_twitter_title', 'seo_twitter_description', 'seo_twitter_image', 'seo_schema', 'transfer_km2', 'program_km2'
+        // usunięte: 'transfer_km2', 'program_km2'
+        // usunięte: 'seo_twitter_title', 'seo_twitter_description', 'seo_twitter_image', 'seo_schema'
     ];
-
-    /**
-     * Rzutowanie pól na typy
-     * @var array<string, string>
-     */
-    protected $casts = [
-        'gallery' => 'array',
-        'is_active' => 'boolean',
-        'show_title_style' => 'boolean',
-        'show_description' => 'boolean',
-    ];
-
-    /**
-     * Relacja wiele-do-wielu z tagami
-     */
-    public function tags()
-    {
-        return $this->belongsToMany(Tag::class, 'event_template_tag');
-    }
 
     /**
      * Relacja wiele-do-wielu z punktami programu (tymczasowa implementacja)

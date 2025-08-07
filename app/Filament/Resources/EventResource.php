@@ -18,8 +18,8 @@ class EventResource extends Resource
 {
     protected static ?string $model = Event::class;
     protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
-    protected static ?string $navigationLabel = 'Imprezy';
     protected static ?string $navigationGroup = 'Imprezy';
+    protected static ?string $navigationLabel = 'Imprezy';
     protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form

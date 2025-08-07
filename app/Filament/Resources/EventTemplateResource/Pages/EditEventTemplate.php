@@ -60,7 +60,7 @@ class EditEventTemplate extends EditRecord
             'startingPlaceAvailabilities',
             'taxes',
             'pricesPerPerson',
-            'qtyVariants',
+            // 'qtyVariants', // usunięte - tabela nie ma event_template_id
             'transportTypes',
             'eventTypes',
             'eventPriceDescription',
@@ -88,6 +88,7 @@ class EditEventTemplate extends EditRecord
             'seo_title' => $original->seo_title,
             'seo_description' => $original->seo_description,
             'seo_keywords' => $original->seo_keywords,
+            // usunięte: transfer_km2, program_km2, seo_twitter_title, seo_twitter_description, seo_twitter_image, seo_schema
         ]);
 
         // Klonuj tagi
@@ -123,15 +124,8 @@ class EditEventTemplate extends EditRecord
         // Ponownie włącz foreign keys
         DB::unprepared('PRAGMA foreign_keys = ON');
 
-        // Klonuj warianty QTY
-        foreach ($original->qtyVariants as $qtyVariant) {
-            $clone->qtyVariants()->create([
-                'qty' => $qtyVariant->qty,
-                'gratis' => $qtyVariant->gratis,
-                'staff' => $qtyVariant->staff,
-                'driver' => $qtyVariant->driver,
-            ]);
-        }
+        // Pomijamy klonowanie wariantów QTY – są globalne, nie zależą od szablonu
+        // foreach ($original->qtyVariants as $qtyVariant) { ... }
 
         // Klonuj ceny za osobę
         // Najpierw usuń istniejące ceny, jeśli istnieją

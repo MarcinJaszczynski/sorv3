@@ -1,0 +1,17 @@
+OK: event_templates.markup_id -> markups.id
+OK: event_templates.bus_id -> buses.id
+BŁĄD: event_template_event_template_program_point.event_template_id -> event_templates.id: 50 niespójnych rekordów
+OK: event_template_event_template_program_point.event_template_program_point_id -> event_template_program_points.id
+OK: event_template_program_points.currency_id -> currencies.id
+BŁĄD: event_template_program_point_tag.event_template_program_point_id -> event_template_program_points.id: 4 niespójnych rekordów
+OK: event_template_program_point_tag.tag_id -> tags.id
+OK: event_template_tag.event_template_id -> event_templates.id
+OK: event_template_tag.tag_id -> tags.id
+OK: event_template_hotel_days.event_template_id -> event_templates.id
+OK: event_template_price_per_person.event_template_qty_id -> event_template_qties.id
+BŁĄD: event_template_price_per_person.currency_id -> currencies.id: 189 niespójnych rekordów
+BŁĄD: event_template_day_insurance.event_template_id -> event_templates.id: 23 niespójnych rekordów
+OK: event_template_day_insurance.insurance_id -> insurances.id
+BŁĄD: event_template_starting_place_availability.event_template_id -> event_templates.id: 22 niespójnych rekordów
+BŁĄD: event_template_starting_place_availability.start_place_id -> places.id: 10 niespójnych rekordów
+BŁĄD: event_template_starting_place_availability.end_place_id -> places.id: 52 niespójnych rekordów

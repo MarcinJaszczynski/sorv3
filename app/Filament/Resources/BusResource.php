@@ -13,8 +13,9 @@ use Filament\Tables\Table;
 class BusResource extends Resource
 {    protected static ?string $model = Bus::class;
     protected static ?string $navigationIcon = 'heroicon-o-truck';
+    protected static ?string $navigationGroup = 'Transport';
     protected static ?string $navigationLabel = 'Autokary';
-    protected static ?string $navigationGroup = 'Ustawienia transportu';
+    protected static ?int $navigationSort = 10;
     protected static ?string $modelLabel = 'autokar';
     protected static ?string $pluralModelLabel = 'autokary';
 

@@ -23,6 +23,9 @@ class EventTemplateResource extends Resource
     protected static ?string $model = EventTemplate::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationGroup = 'Szablony';
+    protected static ?string $navigationLabel = 'Szablony imprez';
+    protected static ?int $navigationSort = 10;
 
     /**
      * Definicja formularza do edycji/dodawania szablonu wydarzenia
@@ -127,6 +130,11 @@ class EventTemplateResource extends Resource
                         ->default(fn($record) => $record?->gallery ?? []),
                 ]),
 
+            // Klasyczny układ: osobne pole "Opis imprezy" (event_description), a poniżej sekcja "Opis i uwagi"
+            Forms\Components\RichEditor::make('event_description')
+                ->label('Opis imprezy')
+                ->toolbarButtons(['bold', 'italic', 'bulletList', 'orderedList', 'link', 'undo', 'redo'])
+                ->columnSpanFull(),
             Forms\Components\Section::make('Opis i uwagi')
                 ->description('Dodatkowe informacje dla biura i uwagi do szablonu')
                 ->icon('heroicon-o-clipboard-document-list')

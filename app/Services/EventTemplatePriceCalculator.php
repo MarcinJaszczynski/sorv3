@@ -23,7 +23,10 @@ class EventTemplatePriceCalculator
             ->wherePivot('include_in_calculation', true)
             ->get();
 
-        $qtyVariants = \App\Models\EventTemplateQty::all();
+        // Pobierz tylko warianty QTY globalne (nie powiązane z konkretnym szablonem)
+        // jeśli warianty są globalne, używaj wszystkich
+        // jeśli są powiązane z szablonem, używaj tylko dla tego szablonu
+        $qtyVariants = \App\Models\EventTemplateQty::all(); // TODO: sprawdzić czy QTY są globalne czy per szablon
         $currencies = collect();
         foreach ($programPoints as $point) {
             if ($point->currency) {

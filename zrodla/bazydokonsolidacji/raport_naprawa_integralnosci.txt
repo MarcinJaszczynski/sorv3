@@ -1,0 +1,7 @@
+event_template_event_template_program_point.event_template_id -> event_templates.id: usunięto 50 niespójnych rekordów
+event_template_program_point_tag.event_template_program_point_id -> event_template_program_points.id: usunięto 4 niespójnych rekordów
+event_template_price_per_person.currency_id -> currencies.id: usunięto 189 niespójnych rekordów
+event_template_day_insurance.event_template_id -> event_templates.id: usunięto 23 niespójnych rekordów
+event_template_starting_place_availability.event_template_id -> event_templates.id: usunięto 22 niespójnych rekordów
+event_template_starting_place_availability.start_place_id -> places.id: usunięto 6 niespójnych rekordów
+event_template_starting_place_availability.end_place_id -> places.id: usunięto 25 niespójnych rekordów
